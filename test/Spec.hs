@@ -15,12 +15,17 @@ import Core (
     StepResult (..),
     progress,
  )
-import Docker (Image (Image), createService, ContainerExitCode (ContainerExitCode))
+import Docker (
+    Image (Image),
+    createService,
+    ContainerExitCode (ContainerExitCode),
+    Volume (Volume), Service (Service)
+    )
 import RIO
 import qualified RIO.NonEmpty.Partial as NonEmpty.Partial
 import qualified RIO.Process as Process
 import qualified RIO.Vector.Storable as Runner
-import Runner (Service(prepareBuild))
+import Runner (Service(prepareBuild, runBuild))
 
 makeStep :: Text -> Text -> [Text] -> Step
 makeStep name image commands =
@@ -42,11 +47,13 @@ testBuild =
         { pipeline = testPipeline
         , state = BuildReady
         , completedSteps = mempty
+        , volume = Docker.Volume ""
         }
 
 cleanupDocker :: IO ()
 cleanupDocker = void do
     Process.readProcessStdout "docker rm -f $(docker ps -aq --filter \"label=quad\")"
+    Process.readProcessStdout "docker volume rm -f $(docker volume ls -q --filter \"label=quad\")"
 
 testRunSuccess :: Runner.Service -> IO ()
 testRunSuccess runner = do
@@ -72,6 +79,17 @@ testRunFailure runner = do
     result.state `shouldBe` BuildFinished BuildFailed
     M.elems result.completedSteps `shouldBe` [StepFailed (Docker.ContainerExitCode 1)]
 
+testSharedWorkspace :: Docker.Service -> Runner.Service -> IO ()
+testSharedWorkspace docker runner = do
+    build <-
+        runner.prepareBuild $ makePipeline [
+            makeStep "Create file" "ubuntu" ["echo hello > test"]
+            , makeStep "Read file" "ubuntu" ["cat test"]
+        ]
+    result <- runner.runBuild build
+    result.state `shouldBe` BuildFinished BuildSucceeded 
+    M.elems result.completedSteps `shouldBe` [StepSucceeded, StepSucceeded ]
+
 main :: IO ()
 main = hspec do
     docker <- runIO Docker.createService
@@ -82,3 +100,5 @@ main = hspec do
             testRunSuccess runner
         it "should run a build (failure)" do
             testRunFailure runner
+        it "should share workspace between steps" do
+            testSharedWorkspace docker runner

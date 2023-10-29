@@ -14,7 +14,8 @@ newtype Image = Image Text
 
 data CreateContainerOptions = CreateContainerOptions
   { image :: Image,
-    script :: Text
+    script :: Text,
+    volume :: Volume
   }
   deriving (Eq, Show)
 
@@ -25,7 +26,8 @@ newtype ContainerId = ContainerId Text deriving (Eq, Show)
 data Service = Service
   { createContainer :: CreateContainerOptions -> IO ContainerId,
     startContainer :: ContainerId -> IO (),
-    containerStatus :: ContainerId -> IO ContainerStatus
+    containerStatus :: ContainerId -> IO ContainerStatus,
+    createVolume :: IO Volume
   }
 
 data ContainerStatus = ContainerRunning | ContainerExited ContainerExitCode | ContainerOther Text deriving (Eq, Show)
@@ -40,6 +42,11 @@ containerIdToText :: ContainerId -> Text
 containerIdToText (ContainerId c) = c
 
 type RequestBuilder = Text -> HTTP.Request
+
+newtype Volume = Volume Text deriving (Eq, Show)
+
+volumeToText :: Volume -> Text
+volumeToText (Volume vol) = vol
 
 parseResponse ::
   HTTP.Response ByteString ->
@@ -58,6 +65,7 @@ createContainer_ makeReq options = do
   manager <- Socket.newManager "/var/run/docker.sock"
 
   let image = imageToText options.image
+  let bind = volumeToText options.volume <> ":/app"
   let body =
         Aeson.object
           [ ("Image", Aeson.toJSON image),
@@ -65,7 +73,9 @@ createContainer_ makeReq options = do
             ("Labels", Aeson.object [("quad", "")]),
             ("Entrypoint", Aeson.toJSON [Aeson.String "/bin/sh", "-c"]),
             ("Cmd", "echo \"$QUAD_SCRIPT\" | /bin/sh"),
-            ("Env", Aeson.toJSON ["QUAD_SCRIPT=" <> options.script])
+            ("Env", Aeson.toJSON ["QUAD_SCRIPT=" <> options.script]),
+            ("WorkingDir", "/app"),
+            ("HostConfig", Aeson.object [ ("Binds", Aeson.toJSON [bind])])
           ]
 
   let req =
@@ -104,6 +114,20 @@ containerStatus_ makeReq container = do
   res <- HTTP.httpBS req
   parseResponse res parser
 
+createVolume_ :: RequestBuilder -> IO Volume
+createVolume_ makeReq = do
+  let body = Aeson.object [("Labels", Aeson.object [("quad", "")])]
+  let req =
+        makeReq "/volumes/create"
+          & HTTP.setRequestMethod "POST"
+          & HTTP.setRequestBodyJSON body
+  let parser = Aeson.withObject "create-volume" $ \o -> do
+        name <- o .: "Name"
+        pure $ Volume name
+
+  res <- HTTP.httpBS req
+  parseResponse res parser
+
 createService :: IO Service
 createService = do
   manager <- Socket.newManager "/var/run/docker.sock"
@@ -116,5 +140,6 @@ createService = do
     Service
       { createContainer = createContainer_ makeReq,
         startContainer = startContainer_ makeReq,
-        containerStatus = containerStatus_ makeReq
+        containerStatus = containerStatus_ makeReq,
+        createVolume = createVolume_ makeReq
       }

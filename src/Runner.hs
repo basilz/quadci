@@ -4,6 +4,7 @@ import Core
 import RIO
 
 import qualified Docker
+import Docker (createVolume)
 
 data Service = Service {
     runBuild :: Build -> IO Build,
@@ -28,8 +29,10 @@ runBuild_ docker build = do
 
 prepareBuild_ :: Docker.Service -> Pipeline -> IO Build
 prepareBuild_ docker pipeline = do
+    volume <- docker.createVolume
     pure Build {
         pipeline = pipeline,
         state = BuildReady,
-        completedSteps = mempty
+        completedSteps = mempty,
+        volume = volume
     }

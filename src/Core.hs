@@ -10,7 +10,7 @@ import Docker
     Service,
     createContainer,
     exitCodeToInt,
-    startContainer,
+    startContainer, Volume
   )
 import RIO
   ( Applicative (pure),
@@ -49,7 +49,8 @@ exitCodeToStepResult exitCode = if Docker.exitCodeToInt exitCode == 0 then StepS
 data Build = Build
   { pipeline :: Pipeline,
     state :: BuildState,
-    completedSteps :: Map StepName StepResult
+    completedSteps :: Map StepName StepResult,
+    volume :: Docker.Volume
   }
   deriving (Eq, Show)
 
@@ -85,7 +86,8 @@ progress docker build = case build.state of
       let options = 
             Docker.CreateContainerOptions 
                 { image = step.image, 
-                  script = script 
+                  script = script,
+                  volume = build.volume 
                 }
       container <- docker.createContainer options
       docker.startContainer container
