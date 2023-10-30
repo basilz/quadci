@@ -3,6 +3,7 @@ module Docker where
 import Data.Aeson ((.:))
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.Types as Aeson.Types
+import qualified Data.Time.Clock.POSIX as Time
 import Network.HTTP.Client (ManagerSettings (managerConnCount))
 import qualified Network.HTTP.Client.Conduit as HTTP
 import qualified Network.HTTP.Simple as HTTP
@@ -27,7 +28,8 @@ data Service = Service
   { createContainer :: CreateContainerOptions -> IO ContainerId,
     startContainer :: ContainerId -> IO (),
     containerStatus :: ContainerId -> IO ContainerStatus,
-    createVolume :: IO Volume
+    createVolume :: IO Volume,
+    fetchLogs :: FetchLogOptions -> IO ByteString 
   }
 
 data ContainerStatus = ContainerRunning | ContainerExited ContainerExitCode | ContainerOther Text deriving (Eq, Show)
@@ -47,6 +49,12 @@ newtype Volume = Volume Text deriving (Eq, Show)
 
 volumeToText :: Volume -> Text
 volumeToText (Volume vol) = vol
+
+data FetchLogOptions = FetchLogOptions
+  { container :: ContainerId,
+    since :: Time.POSIXTime,
+    until :: Time.POSIXTime
+  }
 
 parseResponse ::
   HTTP.Response ByteString ->
@@ -75,7 +83,7 @@ createContainer_ makeReq options = do
             ("Cmd", "echo \"$QUAD_SCRIPT\" | /bin/sh"),
             ("Env", Aeson.toJSON ["QUAD_SCRIPT=" <> options.script]),
             ("WorkingDir", "/app"),
-            ("HostConfig", Aeson.object [ ("Binds", Aeson.toJSON [bind])])
+            ("HostConfig", Aeson.object [("Binds", Aeson.toJSON [bind])])
           ]
 
   let req =
@@ -141,5 +149,6 @@ createService = do
       { createContainer = createContainer_ makeReq,
         startContainer = startContainer_ makeReq,
         containerStatus = containerStatus_ makeReq,
-        createVolume = createVolume_ makeReq
+        createVolume = createVolume_ makeReq,
+        fetchLogs = \_ -> undefined
       }
