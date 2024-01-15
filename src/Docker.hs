@@ -29,7 +29,7 @@ data Service = Service
     startContainer :: ContainerId -> IO (),
     containerStatus :: ContainerId -> IO ContainerStatus,
     createVolume :: IO Volume,
-    fetchLogs :: FetchLogOptions -> IO ByteString 
+    fetchLogs :: FetchLogOptions -> IO ByteString
   }
 
 data ContainerStatus = ContainerRunning | ContainerExited ContainerExitCode | ContainerOther Text deriving (Eq, Show)
@@ -136,6 +136,19 @@ createVolume_ makeReq = do
   res <- HTTP.httpBS req
   parseResponse res parser
 
+fetchLogs_ :: RequestBuilder -> FetchLogOptions -> IO ByteString
+fetchLogs_ makeReq options = do
+  let timestampToText t = tshow (round t :: Int)
+  let url =
+        "/containers/"
+          <> containerIdToText options.container
+          <> "/logs?stdout=true&stderr=true&since"
+          <> timestampToText options.since
+          <> "&until="
+          <> timestampToText options.until
+  res <- HTTP.httpBS $ makeReq url
+  pure $ HTTP.getResponseBody res
+
 createService :: IO Service
 createService = do
   manager <- Socket.newManager "/var/run/docker.sock"
@@ -150,5 +163,5 @@ createService = do
         startContainer = startContainer_ makeReq,
         containerStatus = containerStatus_ makeReq,
         createVolume = createVolume_ makeReq,
-        fetchLogs = \_ -> undefined
+        fetchLogs = fetchLogs_ makeReq
       }
