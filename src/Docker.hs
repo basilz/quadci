@@ -8,9 +8,14 @@ import Network.HTTP.Client (ManagerSettings (managerConnCount))
 import qualified Network.HTTP.Client.Conduit as HTTP
 import qualified Network.HTTP.Simple as HTTP
 import RIO
+import qualified RIO.Text as Text
+import qualified RIO.Text.Partial as Text.Partial
 import qualified Socket
 
-newtype Image = Image Text
+data Image = Image
+  { name :: Text,
+    tag :: Text
+  }
   deriving (Eq, Show)
 
 data CreateContainerOptions = CreateContainerOptions
@@ -29,7 +34,8 @@ data Service = Service
     startContainer :: ContainerId -> IO (),
     containerStatus :: ContainerId -> IO ContainerStatus,
     createVolume :: IO Volume,
-    fetchLogs :: FetchLogOptions -> IO ByteString
+    fetchLogs :: FetchLogOptions -> IO ByteString,
+    pullImage :: Image -> IO ()
   }
 
 data ContainerStatus = ContainerRunning | ContainerExited ContainerExitCode | ContainerOther Text deriving (Eq, Show)
@@ -38,7 +44,7 @@ exitCodeToInt :: ContainerExitCode -> Int
 exitCodeToInt (ContainerExitCode code) = code
 
 imageToText :: Image -> Text
-imageToText (Image image) = image
+imageToText image = image.name <> ":" <> image.tag
 
 containerIdToText :: ContainerId -> Text
 containerIdToText (ContainerId c) = c
@@ -55,6 +61,13 @@ data FetchLogOptions = FetchLogOptions
     since :: Time.POSIXTime,
     until :: Time.POSIXTime
   }
+
+instance Aeson.FromJSON Image where
+  parseJSON = Aeson.withText "parse-image" $ \image -> do
+    case Text.Partial.splitOn ":" image of
+      [name] -> pure $ Image {name = name, tag = "latest"}
+      [name, tag] -> pure $ Image {name = name, tag = tag}
+      _ -> fail $ "Image has too many colons " <> Text.unpack image
 
 parseResponse ::
   HTTP.Response ByteString ->
@@ -149,6 +162,19 @@ fetchLogs_ makeReq options = do
   res <- HTTP.httpBS $ makeReq url
   pure $ HTTP.getResponseBody res
 
+pullImage_ :: RequestBuilder -> Image -> IO ()
+pullImage_ makeReq image = do
+  let url =
+        "/images/create?tag="
+          <> image.tag
+          <> "&fromImage="
+          <> image.name
+  let req =
+        makeReq url
+          & HTTP.setRequestMethod "POST"
+
+  void $ HTTP.httpBS req
+
 createService :: IO Service
 createService = do
   manager <- Socket.newManager "/var/run/docker.sock"
@@ -163,5 +189,6 @@ createService = do
         startContainer = startContainer_ makeReq,
         containerStatus = containerStatus_ makeReq,
         createVolume = createVolume_ makeReq,
-        fetchLogs = fetchLogs_ makeReq
+        fetchLogs = fetchLogs_ makeReq,
+        pullImage = pullImage_ makeReq
       }

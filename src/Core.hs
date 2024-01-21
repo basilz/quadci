@@ -33,20 +33,28 @@ import RIO
     undefined,
     ($),
     (<&>),
-    (<>),
+    (<>), Generic,
   )
 import qualified RIO.Map as M
 import qualified RIO.NonEmpty as NonEmpty
 import qualified RIO.Text as Text
+import qualified Data.Aeson as Aeson
+
 
 newtype StepName = StepName Text
-  deriving (Eq, Show, Ord)
+  deriving (Eq, Show, Ord, Generic, Aeson.FromJSON)
 
-data Step = Step {name :: StepName, commands :: NonEmpty Text, image :: Docker.Image}
-  deriving (Eq, Show)
+data Step = Step
+  { name :: StepName,
+    commands :: NonEmpty Text,
+    image :: Docker.Image
+  }
+  deriving (Eq, Show, Generic, Aeson.FromJSON)
 
-newtype Pipeline = Pipeline {steps :: NonEmpty Step}
-  deriving (Eq, Show)
+newtype Pipeline = Pipeline
+  { steps :: NonEmpty Step
+  }
+  deriving (Eq, Show, Generic, Aeson.FromJSON)
 
 data StepResult = StepFailed Docker.ContainerExitCode | StepSucceeded deriving (Eq, Show)
 
@@ -103,6 +111,7 @@ progress docker build = case build.state of
                 script = script,
                 volume = build.volume
               }
+      docker.pullImage step.image
       container <- docker.createContainer options
       docker.startContainer container
       let s =
