@@ -11,12 +11,14 @@ import RIO
 import qualified RIO.Text as Text
 import qualified RIO.Text.Partial as Text.Partial
 import qualified Socket
+import Codec.Serialise (Serialise)
+import qualified Codec.Serialise as Serialise
 
 data Image = Image
   { name :: Text,
     tag :: Text
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Serialise.Serialise)
 
 data CreateContainerOptions = CreateContainerOptions
   { image :: Image,
@@ -25,9 +27,9 @@ data CreateContainerOptions = CreateContainerOptions
   }
   deriving (Eq, Show)
 
-newtype ContainerExitCode = ContainerExitCode Int deriving (Eq, Show)
+newtype ContainerExitCode = ContainerExitCode Int deriving (Eq, Show, Generic, Serialise.Serialise)
 
-newtype ContainerId = ContainerId Text deriving (Eq, Show)
+newtype ContainerId = ContainerId Text deriving (Eq, Show, Generic, Serialise.Serialise)
 
 data Service = Service
   { createContainer :: CreateContainerOptions -> IO ContainerId,
@@ -51,7 +53,7 @@ containerIdToText (ContainerId c) = c
 
 type RequestBuilder = Text -> HTTP.Request
 
-newtype Volume = Volume Text deriving (Eq, Show)
+newtype Volume = Volume Text deriving (Eq, Show, Generic, Serialise.Serialise)
 
 volumeToText :: Volume -> Text
 volumeToText (Volume vol) = vol
