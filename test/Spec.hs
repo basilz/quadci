@@ -24,6 +24,7 @@ import Docker
     createService,
   )
 import qualified JobHandler
+import qualified JobHandler.Memory
 import RIO
 import qualified RIO.Map as M
 import qualified RIO.Map as Map
@@ -160,7 +161,7 @@ testYamlDecoding runner = do
 testServerAndAgent :: Runner.Service -> IO ()
 testServerAndAgent runner = do
   
-  let handler = undefined :: JobHandler.Service
+  handler <- JobHandler.Memory.createService
 
   serverThread <- Async.async do
     Server.run (Server.Config 9000) handler

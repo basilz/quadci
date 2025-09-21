@@ -1,0 +1,8 @@
+cradle:
+  stack:
+    - path: "./src"
+      component: "quad:lib"
+    - path: "./app"
+      component: "quad:exe:quad"
+    - path: "./test"
+      component: "quad:test:quad-test"

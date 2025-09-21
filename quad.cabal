@@ -14,6 +14,7 @@ library
       Core
       Docker
       JobHandler
+      JobHandler.Memory
       Runner
       Server
       Socket

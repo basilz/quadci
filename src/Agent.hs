@@ -29,9 +29,14 @@ run config runner = forever do
         endpoint
           & HTTP.setRequestMethod "POST"
           & HTTP.setRequestPath "/agent/pull"
-  res <- HTTP.httpLBS req
-  let cmd = Serialise.deserialise (HTTP.getResponseBody res) :: Maybe Cmd
-  traverse_ (runCommand runner) cmd
+  do
+    res <- HTTP.httpLBS req
+    let cmd = Serialise.deserialise (HTTP.getResponseBody res) :: Maybe Cmd
+    traverse_ (runCommand runner) cmd
+    `catch` \e -> do
+      Logger.warningM "quad.agent" "Server offline, waiting... "
+      Logger.warningM "quad.agent" $ show (e :: HTTP.HttpException)
+
   threadDelay (1 * 1000 * 1000)
 
 runCommand :: Runner.Service -> Cmd -> IO ()
@@ -39,7 +44,8 @@ runCommand runner = \case
   StartBuild number pipeline -> do
     let hooks =
           Runner.Hooks
-            { logCollected = traceShowIO
+            { logCollected = traceShowIO,
+              buildUpdated = traceShowIO
             }
     build <- runner.prepareBuild pipeline
     void $ runner.runBuild hooks build
