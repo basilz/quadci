@@ -3,7 +3,6 @@ module JobHandler.Memory where
 import qualified Agent
 import qualified Control.Concurrent.STM as STM
 import Core
-import Core (Build (pipeline))
 import Data.Foldable (find)
 import Docker (createService)
 import qualified JobHandler
