@@ -1,7 +1,6 @@
 module Main where
 
 import qualified Agent
-import Prelude (putStrLn, print)
 import qualified Control.Concurrent.Async as Async
 import Core
   ( Build (..),
@@ -176,9 +175,6 @@ testServerAndAgent runner = do
 
   Async.link agentThread
 
-  -- Give server and agent time to start up
-  threadDelay (500 * 1000)  -- 500ms
-
   let pipeline =
         makePipeline
           [makeStep "agent-test" "busybox" ["echo hello", "echo from agent"]]
@@ -190,35 +186,16 @@ testServerAndAgent runner = do
   Async.cancel agentThread
 
 checkBuild :: JobHandler.Service -> BuildNumber -> IO ()
-checkBuild handler number = do
-  -- Add timeout to prevent hanging
-  result <- timeout (30 * 1000 * 1000) loop  -- 30 seconds
-  case result of
-    Nothing -> do
-      -- Print debug info before timing out
-      Just job <- handler.findJob number
-      putStrLn $ "Test timed out. Final job state: " ++ show job.state
-      error "Test timed out waiting for build completion"
-    Just _ -> pure ()
+checkBuild handler number = loop
   where
     loop = do
       Just job <- handler.findJob number
-      putStrLn $ "Current job state: " ++ show job.state
       case job.state of
         JobHandler.JobScheduled build -> do
-          putStrLn $ "Build state: " ++ show build.state
           case build.state of
             BuildFinished s -> s `shouldBe` BuildSucceeded
-            _ -> do
-              threadDelay (1000 * 1000)  -- Wait 1s before retrying
-              loop
-        JobHandler.JobAssigned -> do
-          putStrLn "Job is assigned to agent, waiting for execution..."
-          threadDelay (1000 * 1000)
-          loop
-        _ -> do
-          threadDelay (1000 * 1000)  -- Wait 1s before retrying
-          loop
+            _ -> loop
+        _ -> loop
 
 main :: IO ()
 main = hspec do
@@ -239,18 +216,4 @@ main = hspec do
     -- it "should decode pipeline" do
     --   testYamlDecoding runner
     it "should run server and agent" do
-      -- Use a simpler mock runner that doesn't require Docker for this test
-      let mockRunner = Runner.Service 
-            { prepareBuild = \_ -> pure $ Build 
-                { pipeline = makePipeline [makeStep "test" "busybox" ["echo test"]]
-                , state = BuildReady
-                , completedSteps = Map.empty
-                , volume = Volume "test-volume" 
-                }
-            , runBuild = \hooks build -> do
-                -- Simulate a successful build
-                let successBuild = build { state = BuildFinished BuildSucceeded }
-                hooks.buildUpdated successBuild
-                pure successBuild
-            }
-      testServerAndAgent mockRunner
+      testServerAndAgent runner
